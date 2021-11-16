@@ -28,6 +28,13 @@
 # endif // !defined(ASIO_DISABLE_CO_AWAIT)
 #endif // !defined(ASIO_HAS_CO_AWAIT)
 
+#ifdef NICE_HAS_CO_AWAIT
+#if !__has_include(<experimental/coroutine>)
+#include <coroutine>
+#else
+#include <experimental/coroutine>
+#endif
+#endif
 
 namespace asio{
 	class io_context;
@@ -45,10 +52,9 @@ namespace nicehero {
 	using std::experimental::suspend_always;
 	using std::experimental::suspend_never;
 #endif
-#endif
 	template <
 		//								返回类型
-		typename				R 
+		typename				R
 		//								执行线程
 		, asio::io_context&	executer
 		//								返回线程(默认和执行线程相同)
@@ -124,11 +130,20 @@ namespace nicehero {
 			hasRet = true;
 		}
 		friend struct promise_type;
-	protected:
-		promise_type* m_promise = nullptr;
-		R ret;
-		bool hasRet = false;
+		protected:
+			promise_type* m_promise = nullptr;
+			R ret;
+			bool hasRet = false;
 	};
+#else
+	template <typename R, asio::io_context& executer, asio::io_context& return_context = executer>
+	struct Task
+	{
+		Task(R&& r) :ret(std::move(r)) {	}
+		R ret;
+	};
+
+#endif
 }
 
 #endif
