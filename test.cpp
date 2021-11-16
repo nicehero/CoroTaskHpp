@@ -141,26 +141,32 @@ Task<int, execute, return_context> coro_add(int x, int y)
 	int r = x + y;
 	co_return r;
 }
+
+typedef Task<bool,main_thread> MyTask;
 int main(int argc, char* argv[])
 {
 	try
 	{
 		std::cout << "main_thread=" << std::this_thread::get_id() << std::endl;
 		start();
-		main_thread.post([]()->Task<bool> {
-			//-------主线程------
+		//创建一个主线程任务f (不需post,协程开始后会自动往相应的线程post出去)
+		auto f = []()->MyTask {
+			//-------主线程开始------
 			std::cout << "step1: now thread_id=" << std::this_thread::get_id() << std::endl;
 			//切换到工作线程执行coro_add
-			int x = co_await coro_add<work_threads,work_threads>(1, 2);
+			int x = co_await coro_add<work_threads, work_threads>(1, 2);
 			//返回后还处于此线程
 			std::cout << "step2: now thread_id=" << std::this_thread::get_id() << std::endl;
-			//切换到工作线程执行coro_add,完成后返回主线程
+			//切换到工作线程执行coro_add,完成后返回主线程 (使用coro_add的默认模板参数)
 			int y = co_await coro_add(3, 4);
-			//-------主线程------
+			//-------回到主线程------
 			std::cout << "step3: now thread_id=" << std::this_thread::get_id() << std::endl;
 			co_return true;
-		});
+		};
+		//执行协程任务f
+		f();
 
+		//如果任务中没有co_await,co_return,Task也可以作为一个普通函数使用
 		main_thread.post([]()->Task<bool> {
 			return true;
 		});

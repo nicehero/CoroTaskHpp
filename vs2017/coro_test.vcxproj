@@ -21,6 +21,9 @@
   <ItemGroup>
     <ClCompile Include="..\test.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Task.hpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{4746D1C1-65F9-4697-924E-4330955A9008}</ProjectGuid>
