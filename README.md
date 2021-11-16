@@ -93,7 +93,7 @@ int main()
 	f();
 	
 	//如果任务中没有co_await,co_return,Task也可以作为一个普通函数使用
-	main_thread.post([]()->Task<bool> {
+	main_thread.post([]()->MyTask {
 		return true;
 	});
 

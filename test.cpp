@@ -14,6 +14,25 @@ asio::io_context main_thread(1);
 asio::io_context work_threads(WORK_THREAD_COUNT);
 asio::signal_set signals(main_thread, SIGINT, SIGTERM);
 
+#ifdef WIN32
+static BOOL WINAPI handleWin32Console(DWORD event)
+{
+	switch (event)
+	{
+	case CTRL_CLOSE_EVENT:
+	case CTRL_C_EVENT:
+	{
+		printf("handle end\n");
+		main_thread.stop();
+		work_threads.stop();
+	}
+
+	return TRUE;
+	}
+	return FALSE;
+}
+#endif
+
 void start()
 {
 	for (int i = 0; i < WORK_THREAD_COUNT; ++i)
@@ -32,106 +51,16 @@ void start()
 		main_thread.stop();
 		work_threads.stop();
 	});
-}
-
-namespace nicehero {
-
-#if !__has_include(<experimental/coroutine>)
-#define STDCORO std
-	using std::coroutine_handle;
-	using std::suspend_always;
-	using std::suspend_never;
-#else
-#define STDCORO std::experimental
-	using std::experimental::coroutine_handle;
-	using std::experimental::suspend_always;
-	using std::experimental::suspend_never;
+#ifdef WIN32
+	if (!SetConsoleCtrlHandler(handleWin32Console, TRUE))
+	{
+		fprintf(stderr, "error setting event handler.\n");
+	}
 #endif
 
-	template <
-		//								返回类型
-		typename				R 
-		//								执行线程
-		, asio::io_context&	executer = main_thread
-		//								返回线程
-		, asio::io_context&	return_context = main_thread>
-	struct Task {
-		//////////-----------------------------
-		struct promise_type {
-			auto initial_suspend() {
-				return suspend_always{};
-			}
-			auto final_suspend() noexcept {
-				return suspend_never{};
-			}
-			auto get_return_object() {
-				return Task<R, executer, return_context>(this);
-			}
-			void unhandled_exception() {
-				std::terminate();
-			}
-			//void return_void() {}
-			template<typename U>
-			void return_value(U&& value) {
-				if (m_task) {
-					m_task->ret = std::move(value);
-				}
-			}
-			promise_type() {
-				m_task = nullptr;
-			}
-			~promise_type() {
-				if (m_task) {
-					m_task->m_promise = nullptr;
-				}
-			}
-			friend struct Task<R, executer, return_context>;
-		protected:
-			Task* m_task = nullptr;
-		};
-		bool await_ready() const {
-			return false;
-		}
-		R await_resume() {
-			return std::move(ret);
-		}
-		void await_suspend(coroutine_handle<> handle) {
-			executer.post([handle, this]() {
-				if (&executer == &return_context) {
-					handle.resume();
-					return;
-				}
-				return_context.post([handle, this]() {
-					handle.resume();
-				});
-			});
-		}
-		Task(promise_type* p) {
-			m_promise = p;
-			if (m_promise) {
-				m_promise->m_task = this;
-			}
-			executer.post([p] {
-				auto handle = coroutine_handle<promise_type>::from_promise(*p);
-				handle.resume();
-			});
-		}
-
-		~Task() {
-			if (m_promise) {
-				m_promise = nullptr;
-			}
-		}
-		Task(R&& r) :ret(r) {
-			hasRet = true;
-		}
-		friend struct promise_type;
-	protected:
-		promise_type* m_promise = nullptr;
-		R ret;
-		bool hasRet = false;
-	};
 }
+
+#include "Task.hpp"
 
 using namespace nicehero;
 template<asio::io_context& execute = work_threads, asio::io_context& return_context = main_thread>
@@ -145,6 +74,10 @@ Task<int, execute, return_context> coro_add(int x, int y)
 typedef Task<bool,main_thread> MyTask;
 int main(int argc, char* argv[])
 {
+#if defined(_DEBUG)
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
 	try
 	{
 		std::cout << "main_thread=" << std::this_thread::get_id() << std::endl;
@@ -167,9 +100,10 @@ int main(int argc, char* argv[])
 		f();
 
 		//如果任务中没有co_await,co_return,Task也可以作为一个普通函数使用
-		main_thread.post([]()->Task<bool> {
+		main_thread.post([]()->MyTask {
 			return true;
 		});
+
 
 		asio::io_context::work work(main_thread);
 		main_thread.run();
