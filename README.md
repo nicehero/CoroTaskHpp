@@ -1,6 +1,21 @@
-# nicehero
+# CoroTaskHpp 只需一个hpp文件，使用co_await随意灵活的切换任意工作线程
+
+只需一个hpp你就可以写出这样的协程代码
+```c++
+MyTask<bool> myTask()
+{
+	auto cursor = co_await MongoFind<work_thread,main_thread>(...);//在工作线程work_thread中请求数据库，返回给主线程
+	while (auto* o = cursor.fetch()){
+		//
+	}
+}
+```
+
+#此hpp只需要asio和c++20,当然也可以看我的hpp代码修改出你的版本
 
 #need GNU 11 + 推荐使用WinLibs测试 https://winlibs.com/
+
+#测试安装方法
 
 cd dep
 
