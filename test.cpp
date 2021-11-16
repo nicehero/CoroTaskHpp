@@ -2,11 +2,6 @@
 #include<thread>
 #include<chrono>
 #include <asio/asio.hpp>
-#if !__has_include(<experimental/coroutine>)
-#include <coroutine>
-#else
-#include <experimental/coroutine>
-#endif
 
 
 const int WORK_THREAD_COUNT = 1;
