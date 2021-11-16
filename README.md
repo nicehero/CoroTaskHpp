@@ -4,10 +4,13 @@
 ```c++
 MyTask<bool> myTask()
 {
-	auto cursor = co_await MongoFind<work_thread,main_thread>(...);//在工作线程work_thread中请求数据库，返回给主线程
+	//在工作线程work_thread中请求数据库，返回给主线程main_thread
+	auto cursor = co_await MongoFind<work_thread,main_thread>(...);
+	//在主线程中完成其他工作吧
 	while (auto* o = cursor.fetch()){
-		//
+		//.....
 	}
+	//send(...);
 }
 ```
 
