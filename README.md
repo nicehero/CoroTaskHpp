@@ -13,7 +13,9 @@ mkdir build
 cd build
 
 #cmake -G"your build tools" ..
+
 #example mingw
+
 #cmake -G"MinGW Makefiles" ..
 
 make install
@@ -21,9 +23,11 @@ make install
 cd ..
 
 ./coro_test
+
 #coro_test.exe
 
 #gcc编译需要添加参数 -std=c++20 -fcoroutines
+
 #vs2017编译需要添加参数 /await
 
 超简单的使用方法 example:
