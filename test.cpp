@@ -11,6 +11,7 @@ const int WORK_THREAD_COUNT = 8;
 asio::io_context main_thread(1);
 asio::io_context work_threads(WORK_THREAD_COUNT);
 asio::signal_set signals(main_thread, SIGINT, SIGTERM);
+//必须定义一线程全局变量g_current_thread，并在每个线程创建时赋值为对应的io_context指针
 thread_local asio::io_context* g_current_thread = &main_thread;
 #ifdef WIN32
 static BOOL WINAPI handleWin32Console(DWORD event)
@@ -80,6 +81,7 @@ int main(int argc, char* argv[])
 	{
 		std::cout << "main_thread=" << std::this_thread::get_id() << std::endl;
 		start();
+		g_current_thread = &main_thread;
 		//创建一个主线程任务f (不需post,协程开始后会自动往相应的线程post出去)
 		auto f = []()->MyTask {
 			//-------主线程开始------

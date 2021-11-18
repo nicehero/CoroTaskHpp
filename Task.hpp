@@ -54,6 +54,16 @@ namespace nicehero {
 	using std::experimental::suspend_always;
 	using std::experimental::suspend_never;
 #endif
+	struct suspend_if {
+		bool _Ready;
+		explicit suspend_if(bool _Condition) noexcept : _Ready(!_Condition) {
+		}
+		bool await_ready() noexcept {
+			return _Ready;
+		}
+		void await_suspend(coroutine_handle<>) noexcept {}
+		void await_resume() noexcept {}
+	};
 	template <
 		//								返回类型
 		typename				R
@@ -65,7 +75,7 @@ namespace nicehero {
 		//////////-----------------------------
 		struct promise_type {
 			auto initial_suspend() {
-				return suspend_always{};
+				return suspend_if{ &executer != g_current_thread };
 			}
 			auto final_suspend() noexcept {
 				return suspend_never{};
@@ -134,16 +144,18 @@ namespace nicehero {
 				m_promise->m_task = this;
 			}
 			first_context = g_current_thread;
-			if (first_context == &executer)
-			{
-				auto handle = coroutine_handle<promise_type>::from_promise(*p);
-				handle.resume();
-				return;
+// 			if (first_context == &executer)
+// 			{
+// 				auto handle = coroutine_handle<promise_type>::from_promise(*p);
+// 				handle.resume();
+// 				return;
+// 			}
+			if (first_context != &executer) {
+				executer.post([p] {
+					auto handle = coroutine_handle<promise_type>::from_promise(*p);
+					handle.resume();
+				});
 			}
-			executer.post([p] {
-				auto handle = coroutine_handle<promise_type>::from_promise(*p);
-				handle.resume();
-			});
 		}
 
 		~Task() {

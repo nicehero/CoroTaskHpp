@@ -53,11 +53,14 @@ cd ..
 #include <asio/asio.hpp>
 #include "Task.hpp"
 
+const int WORK_THREAD_COUNT //工作线程数
 asio::io_context main_thread(1);//你的主线程io_context
 asio::io_context work_threads(WORK_THREAD_COUNT);//你的工作线程io_context
+//必须定义一线程全局变量g_current_thread，并在每个线程创建时赋值为对应的io_context指针
+thread_local asio::io_context* g_current_thread = &main_thread;
+
 using namespace nicehero;
 
-const int WORK_THREAD_COUNT = 1;
 
 //开始创建一个可以co_await的协程吧
 //execute 为你执行时希望的线程，return_context 为你返回后回到的线程
@@ -73,6 +76,19 @@ Task<int, execute, return_context> coro_add(int x, int y)//一个返回int的模
 typedef Task<bool,main_thread> MyTask;
 int main()
 {
+	g_current_thread = &main_thread;
+	//创建工作线程并给g_current_thread赋值
+	for (int i = 0; i < WORK_THREAD_COUNT; ++i)
+	{
+		std::thread t([] {
+			g_current_thread = &work_threads;
+			asio::io_context::work work(work_threads);
+			work_threads.run();
+		});
+		t.detach();
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+
 	//do 一些初始化逻辑
 	
 	//创建一个主线程任务 (不需post,协程开始后会自动往相应的线程post出去)
@@ -97,7 +113,7 @@ int main()
 		return true;
 	});
 
-	//do main_thread.run();等内容
+	main_thread.run();//
 	
 	return 0;
 }
