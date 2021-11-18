@@ -39,6 +39,8 @@
 namespace asio{
 	class io_context;
 }
+
+extern thread_local asio::io_context* g_current_thread;
 namespace nicehero {
 #ifdef NICE_HAS_CO_AWAIT
 #if !__has_include(<experimental/coroutine>)
@@ -79,6 +81,20 @@ namespace nicehero {
 			void return_value(U&& value) {
 				if (m_task) {
 					m_task->ret = std::move(value);
+					auto h = m_task->m_handle;
+					if (!h) {
+						return;
+					}
+					if (&executer == &return_context) {
+						h.resume();
+						return;
+					}
+					return_context.post([h]() {
+						if (!h) {
+							return;
+						}
+						h.resume();
+					});
 				}
 			}
 			promise_type() {
@@ -100,20 +116,29 @@ namespace nicehero {
 			return std::move(ret);
 		}
 		void await_suspend(coroutine_handle<> handle) {
-			executer.post([handle, this]() {
-				if (&executer == &return_context) {
-					handle.resume();
-					return;
-				}
-				return_context.post([handle, this]() {
+			if (first_context == &executer && (&return_context == &executer)) {
+				handle.resume();
+				return;
+			}
+			if (first_context == &executer && (&return_context != &executer)) {
+				return_context.post([handle] {
 					handle.resume();
 				});
-			});
+				return;
+			}
+			m_handle = handle;
 		}
 		Task(promise_type* p) {
 			m_promise = p;
 			if (m_promise) {
 				m_promise->m_task = this;
+			}
+			first_context = g_current_thread;
+			if (first_context == &executer)
+			{
+				auto handle = coroutine_handle<promise_type>::from_promise(*p);
+				handle.resume();
+				return;
 			}
 			executer.post([p] {
 				auto handle = coroutine_handle<promise_type>::from_promise(*p);
@@ -123,6 +148,7 @@ namespace nicehero {
 
 		~Task() {
 			if (m_promise) {
+				m_promise->m_task = nullptr;
 				m_promise = nullptr;
 			}
 		}
@@ -134,6 +160,8 @@ namespace nicehero {
 			promise_type* m_promise = nullptr;
 			R ret;
 			bool hasRet = false;
+			coroutine_handle<> m_handle = nullptr;
+			asio::io_context* first_context = nullptr;
 	};
 #else
 	template <typename R, asio::io_context& executer, asio::io_context& return_context = executer>

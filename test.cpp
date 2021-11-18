@@ -3,11 +3,15 @@
 #include<chrono>
 #include <asio/asio.hpp>
 
-const int WORK_THREAD_COUNT = 1;
+namespace asio {
+	class io_context;
+}
+
+const int WORK_THREAD_COUNT = 8;
 asio::io_context main_thread(1);
 asio::io_context work_threads(WORK_THREAD_COUNT);
 asio::signal_set signals(main_thread, SIGINT, SIGTERM);
-
+thread_local asio::io_context* g_current_thread = &main_thread;
 #ifdef WIN32
 static BOOL WINAPI handleWin32Console(DWORD event)
 {
@@ -33,12 +37,14 @@ void start()
 	{
 		std::thread t([] {
 			std::cout << "work_thread=" << std::this_thread::get_id() << std::endl;
+			g_current_thread = &work_threads;
 			asio::io_context::work work(work_threads);
 			work_threads.run();
 		});
 		t.detach();
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
 	}
-	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	signals.async_wait([&](asio::error_code p1, auto p2) {
 		auto s = p1.message();
 		std::cout << s << std::endl;
@@ -76,14 +82,16 @@ int main(int argc, char* argv[])
 		start();
 		//创建一个主线程任务f (不需post,协程开始后会自动往相应的线程post出去)
 		auto f = []()->MyTask {
-			//-------主线程开始------			std::cout << "step1: now thread_id=" << std::this_thread::get_id() << std::endl;
+			//-------主线程开始------
+			std::cout << "step1: now thread_id=" << std::this_thread::get_id() << std::endl;
 			//切换到工作线程执行coro_add
 			int x = co_await coro_add<work_threads, work_threads>(1, 2);
 			//返回后还处于此线程
 			std::cout << "step2: now thread_id=" << std::this_thread::get_id() << std::endl;
 			//切换到工作线程执行coro_add,完成后返回主线程 (使用coro_add的默认模板参数)
-			int y = co_await coro_add(3, 4);
-			//-------回到主线程------			std::cout << "step3: now thread_id=" << std::this_thread::get_id() << std::endl;
+			x += co_await coro_add(3, 4);
+			//-------回主线程结束------
+			std::cout << "step3: now thread_id=" << std::this_thread::get_id() << ",x=" << x << std::endl;
 			co_return true;
 		};
 		//执行协程任务f
@@ -93,7 +101,7 @@ int main(int argc, char* argv[])
 			return true;
 		});
 
-		asio::io_context::work work(main_thread);
+// 		asio::io_context::work work(main_thread);
 		main_thread.run();
 	}
 	catch (std::exception& e)
