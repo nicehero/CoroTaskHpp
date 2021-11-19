@@ -1,6 +1,8 @@
 #ifndef ___NICE_CORO_TASK_HPP__
 #define ___NICE_CORO_TASK_HPP__
 #include<thread>
+#include <mutex>
+#include <condition_variable>
 
 #if !defined(NICE_HAS_CO_AWAIT)
 # if !defined(NICE_DISABLE_CO_AWAIT)
@@ -42,6 +44,26 @@ namespace asio{
 
 extern thread_local asio::io_context* g_current_thread;
 namespace nicehero {
+	class semaphore {
+	public:
+		semaphore(long count = 0) :count(count) {}
+		void wait() {
+			std::unique_lock<std::mutex>lock(mx);
+			cond.wait(lock, [&]() {return count > 0; });
+			--count;
+	}
+		void signal() {
+			std::unique_lock<std::mutex>lock(mx);
+			++count;
+			cond.notify_one();
+		}
+
+	private:
+		std::mutex mx;
+		std::condition_variable cond;
+		long count;
+	};
+
 #ifdef NICE_HAS_CO_AWAIT
 #if !__has_include(<experimental/coroutine>)
 #define STDCORO std
@@ -90,6 +112,9 @@ namespace nicehero {
 			template<typename U>
 			void return_value(U&& value) {
 				if (m_task) {
+					if (m_task->first_context != &executer) {
+						m_semaphore.wait();
+					}
 					m_task->ret = std::move(value);
 					auto h = m_task->m_handle;
 					if (!h) {
@@ -118,6 +143,7 @@ namespace nicehero {
 			friend struct Task<R, executer, return_context>;
 		protected:
 			Task* m_task = nullptr;
+			semaphore m_semaphore;
 		};
 		bool await_ready() const {
 			return false;
@@ -131,12 +157,16 @@ namespace nicehero {
 				return;
 			}
 			if (first_context == &executer && (&return_context != &executer)) {
-				return_context.post([handle] {
-					handle.resume();
+				m_handle2 = handle;
+				return_context.post([this] {
+					m_handle2.resume();
 				});
 				return;
 			}
 			m_handle = handle;
+			if (m_promise) {
+				m_promise->m_semaphore.signal();
+			}
 		}
 		Task(promise_type* p) {
 			m_promise = p;
@@ -144,12 +174,6 @@ namespace nicehero {
 				m_promise->m_task = this;
 			}
 			first_context = g_current_thread;
-// 			if (first_context == &executer)
-// 			{
-// 				auto handle = coroutine_handle<promise_type>::from_promise(*p);
-// 				handle.resume();
-// 				return;
-// 			}
 			if (first_context != &executer) {
 				executer.post([p] {
 					auto handle = coroutine_handle<promise_type>::from_promise(*p);
@@ -173,6 +197,7 @@ namespace nicehero {
 			R ret;
 			bool hasRet = false;
 			coroutine_handle<> m_handle = nullptr;
+			coroutine_handle<> m_handle2 = nullptr;
 			asio::io_context* first_context = nullptr;
 	};
 #else
