@@ -53,7 +53,7 @@ cd ..
 #include <asio/asio.hpp>
 #include "Task.hpp"
 
-const int WORK_THREAD_COUNT //工作线程数
+const int WORK_THREAD_COUNT = 8; //工作线程数
 asio::io_context main_thread(1);//你的主线程io_context
 asio::io_context work_threads(WORK_THREAD_COUNT);//你的工作线程io_context
 //必须定义一线程全局变量g_current_thread，并在每个线程创建时赋值为对应的io_context指针
